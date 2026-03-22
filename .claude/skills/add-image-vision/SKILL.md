@@ -1,22 +1,22 @@
 ---
 name: add-image-vision
-description: Add image vision to NanoClaw agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
+description: Add image vision to AgentOS agents. Resizes and processes WhatsApp image attachments, then sends them to Claude as multimodal content blocks.
 ---
 
 # Image Vision Skill
 
-Adds the ability for NanoClaw agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
+Adds the ability for AgentOS agents to see and understand images sent via WhatsApp. Images are downloaded, resized with sharp, saved to the group workspace, and passed to the agent as base64-encoded multimodal content blocks.
 
 ## Phase 1: Pre-flight
 
-1. Check `.nanoclaw/state.yaml` for `add-image-vision` — skip if already applied
+1. Check `.agentos/state.yaml` for `add-image-vision` — skip if already applied
 2. Confirm `sharp` is installable (native bindings require build tools)
 
 ## Phase 2: Apply Code Changes
 
 1. Initialize the skills system if not already done:
    ```bash
-   npx tsx -e "import { initNanoclawDir } from './skills-engine/init.ts'; initNanoclawDir();"
+   npx tsx -e "import { initAgentOSDir } from './skills-engine/init.ts'; initAgentOSDir();"
    ```
 
 2. Apply the skill:
@@ -51,7 +51,7 @@ Adds the ability for NanoClaw agents to see and understand images sent via Whats
 
 3. Restart the service:
    ```bash
-   launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+   launchctl kickstart -k gui/$(id -u)/com.agentos
    ```
 
 ## Phase 4: Verify

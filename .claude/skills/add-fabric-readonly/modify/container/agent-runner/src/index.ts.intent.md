@@ -9,7 +9,7 @@ Added Fabric read-only MCP server so the container agent can browse and query Az
 - Added: `'AZURE_CLIENT_SECRET'` to prevent leaking to Bash subprocesses
 
 ### allowedTools array (inside runQuery → options)
-- Added: `'mcp__fabric__*'` after `'mcp__nanoclaw__*'`
+- Added: `'mcp__fabric__*'` after `'mcp__agentos__*'`
 
 ### mcpServers object (inside runQuery → options)
 - Added: `fabric` entry as a stdio MCP server
@@ -19,7 +19,7 @@ Added Fabric read-only MCP server so the container agent can browse and query Az
 
 ## Invariants (must-keep)
 - All existing allowedTools entries unchanged
-- nanoclaw MCP server config unchanged
+- agentos MCP server config unchanged
 - All other query options (permissionMode, hooks, env, etc.) unchanged
 - MessageStream class unchanged
 - IPC polling logic unchanged

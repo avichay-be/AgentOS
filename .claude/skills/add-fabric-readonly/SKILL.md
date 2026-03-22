@@ -34,7 +34,7 @@ Safety is enforced at multiple layers:
 
 ### Check if already applied
 
-Read `.nanoclaw/state.yaml`. If `fabric-readonly` is in `applied_skills`, skip to Phase 3 (Configure). The code changes are already in place.
+Read `.agentos/state.yaml`. If `fabric-readonly` is in `applied_skills`, skip to Phase 3 (Configure). The code changes are already in place.
 
 ### Check prerequisites
 
@@ -55,7 +55,7 @@ Run the skills engine to apply this skill's code package.
 
 ### Initialize skills system (if needed)
 
-If `.nanoclaw/` directory doesn't exist yet:
+If `.agentos/` directory doesn't exist yet:
 
 ```bash
 npx tsx scripts/apply-skill.ts --init
@@ -72,7 +72,7 @@ This deterministically:
 - Adds `container/skills/fabric-readonly/SKILL.md` (in-container agent guidance)
 - Three-way merges Fabric MCP config into `container/agent-runner/src/index.ts` (allowedTools + mcpServers + SECRET_ENV_VARS)
 - Three-way merges `[FABRIC]` log surfacing + Azure secrets into `src/container-runner.ts`
-- Records the application in `.nanoclaw/state.yaml`
+- Records the application in `.agentos/state.yaml`
 
 If the apply reports merge conflicts, read the intent files:
 - `modify/container/agent-runner/src/index.ts.intent.md` — what changed and invariants
@@ -129,8 +129,8 @@ The `FABRIC_WORKSPACE_ID` is optional but convenient — tools will use it as de
 ### Restart the service
 
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # macOS
-# Linux: systemctl --user restart nanoclaw
+launchctl kickstart -k gui/$(id -u)/com.agentos  # macOS
+# Linux: systemctl --user restart agentos
 ```
 
 ## Phase 4: Verify
@@ -148,7 +148,7 @@ Tell the user:
 ### Check logs if needed
 
 ```bash
-tail -f logs/nanoclaw.log | grep -i fabric
+tail -f logs/agentos.log | grep -i fabric
 ```
 
 Look for:

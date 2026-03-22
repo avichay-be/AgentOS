@@ -19,7 +19,7 @@ function generatePlist(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.nanoclaw</string>
+    <string>com.agentos</string>
     <key>ProgramArguments</key>
     <array>
         <string>${nodePath}</string>
@@ -39,9 +39,9 @@ function generatePlist(
         <string>${homeDir}</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>${projectRoot}/logs/nanoclaw.log</string>
+    <string>${projectRoot}/logs/agentos.log</string>
     <key>StandardErrorPath</key>
-    <string>${projectRoot}/logs/nanoclaw.error.log</string>
+    <string>${projectRoot}/logs/agentos.error.log</string>
 </dict>
 </plist>`;
 }
@@ -53,7 +53,7 @@ function generateSystemdUnit(
   isSystem: boolean,
 ): string {
   return `[Unit]
-Description=NanoClaw Personal Assistant
+Description=AgentOS Personal Assistant
 After=network.target
 
 [Service]
@@ -64,8 +64,8 @@ Restart=always
 RestartSec=5
 Environment=HOME=${homeDir}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin:${homeDir}/.local/bin
-StandardOutput=append:${projectRoot}/logs/nanoclaw.log
-StandardError=append:${projectRoot}/logs/nanoclaw.error.log
+StandardOutput=append:${projectRoot}/logs/agentos.log
+StandardError=append:${projectRoot}/logs/agentos.error.log
 
 [Install]
 WantedBy=${isSystem ? 'multi-user.target' : 'default.target'}`;
@@ -75,16 +75,16 @@ describe('plist generation', () => {
   it('contains the correct label', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
     );
-    expect(plist).toContain('<string>com.nanoclaw</string>');
+    expect(plist).toContain('<string>com.agentos</string>');
   });
 
   it('uses the correct node path', () => {
     const plist = generatePlist(
       '/opt/node/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
     );
     expect(plist).toContain('<string>/opt/node/bin/node</string>');
@@ -93,20 +93,20 @@ describe('plist generation', () => {
   it('points to dist/index.js', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
     );
-    expect(plist).toContain('/home/user/nanoclaw/dist/index.js');
+    expect(plist).toContain('/home/user/agentos/dist/index.js');
   });
 
   it('sets log paths', () => {
     const plist = generatePlist(
       '/usr/local/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
     );
-    expect(plist).toContain('nanoclaw.log');
-    expect(plist).toContain('nanoclaw.error.log');
+    expect(plist).toContain('agentos.log');
+    expect(plist).toContain('agentos.error.log');
   });
 });
 
@@ -114,7 +114,7 @@ describe('systemd unit generation', () => {
   it('user unit uses default.target', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
       false,
     );
@@ -124,7 +124,7 @@ describe('systemd unit generation', () => {
   it('system unit uses multi-user.target', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
       true,
     );
@@ -134,7 +134,7 @@ describe('systemd unit generation', () => {
   it('contains restart policy', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/home/user/nanoclaw',
+      '/home/user/agentos',
       '/home/user',
       false,
     );
@@ -145,32 +145,32 @@ describe('systemd unit generation', () => {
   it('sets correct ExecStart', () => {
     const unit = generateSystemdUnit(
       '/usr/bin/node',
-      '/srv/nanoclaw',
+      '/srv/agentos',
       '/home/user',
       false,
     );
     expect(unit).toContain(
-      'ExecStart=/usr/bin/node /srv/nanoclaw/dist/index.js',
+      'ExecStart=/usr/bin/node /srv/agentos/dist/index.js',
     );
   });
 });
 
 describe('WSL nohup fallback', () => {
   it('generates a valid wrapper script', () => {
-    const projectRoot = '/home/user/nanoclaw';
+    const projectRoot = '/home/user/agentos';
     const nodePath = '/usr/bin/node';
-    const pidFile = path.join(projectRoot, 'nanoclaw.pid');
+    const pidFile = path.join(projectRoot, 'agentos.pid');
 
     // Simulate what service.ts generates
     const wrapper = `#!/bin/bash
 set -euo pipefail
 cd ${JSON.stringify(projectRoot)}
-nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot)}/dist/index.js >> ${JSON.stringify(projectRoot)}/logs/nanoclaw.log 2>> ${JSON.stringify(projectRoot)}/logs/nanoclaw.error.log &
+nohup ${JSON.stringify(nodePath)} ${JSON.stringify(projectRoot)}/dist/index.js >> ${JSON.stringify(projectRoot)}/logs/agentos.log 2>> ${JSON.stringify(projectRoot)}/logs/agentos.error.log &
 echo $! > ${JSON.stringify(pidFile)}`;
 
     expect(wrapper).toContain('#!/bin/bash');
     expect(wrapper).toContain('nohup');
     expect(wrapper).toContain(nodePath);
-    expect(wrapper).toContain('nanoclaw.pid');
+    expect(wrapper).toContain('agentos.pid');
   });
 });

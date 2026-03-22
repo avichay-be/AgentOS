@@ -5,7 +5,7 @@ import path from 'path';
 import YAML from 'yaml';
 
 import { logger } from '../src/logger.js';
-import { initNanoclawDir } from '../skills-engine/init.js';
+import { initAgentOSDir } from '../skills-engine/init.js';
 import { applySkill } from '../skills-engine/apply.js';
 import { upsertEnvVars } from './env-file.js';
 import { emitStatus } from './status.js';
@@ -256,7 +256,7 @@ function grantWorkspaceViewer(workspaceId: string, clientId: string): void {
 }
 
 function isFabricSkillApplied(projectRoot: string): boolean {
-  const statePath = path.join(projectRoot, '.nanoclaw', 'state.yaml');
+  const statePath = path.join(projectRoot, '.agentos', 'state.yaml');
   if (!fs.existsSync(statePath)) return false;
 
   const parsed = YAML.parse(fs.readFileSync(statePath, 'utf-8')) as
@@ -274,8 +274,8 @@ async function ensureFabricSkill(projectRoot: string): Promise<boolean> {
     return false;
   }
 
-  if (!fs.existsSync(path.join(projectRoot, '.nanoclaw'))) {
-    initNanoclawDir();
+  if (!fs.existsSync(path.join(projectRoot, '.agentos'))) {
+    initAgentOSDir();
   }
 
   const result = await applySkill(

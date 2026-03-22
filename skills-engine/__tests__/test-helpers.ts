@@ -5,18 +5,18 @@ import path from 'path';
 import { stringify } from 'yaml';
 
 export function createTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-test-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'agentos-test-'));
 }
 
-export function setupNanoclawDir(tmpDir: string): void {
-  fs.mkdirSync(path.join(tmpDir, '.nanoclaw', 'base', 'src'), {
+export function setupAgentOSDir(tmpDir: string): void {
+  fs.mkdirSync(path.join(tmpDir, '.agentos', 'base', 'src'), {
     recursive: true,
   });
-  fs.mkdirSync(path.join(tmpDir, '.nanoclaw', 'backup'), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, '.agentos', 'backup'), { recursive: true });
 }
 
 export function writeState(tmpDir: string, state: any): void {
-  const statePath = path.join(tmpDir, '.nanoclaw', 'state.yaml');
+  const statePath = path.join(tmpDir, '.agentos', 'state.yaml');
   fs.writeFileSync(statePath, stringify(state), 'utf-8');
 }
 

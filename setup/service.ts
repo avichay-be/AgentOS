@@ -160,7 +160,7 @@ function setupLinux(
 }
 
 /**
- * Kill any orphaned nanoclaw node processes left from previous runs or debugging.
+ * Kill any orphaned agentos node processes left from previous runs or debugging.
  * Prevents connection conflicts when two instances connect to the same channel simultaneously.
  */
 function killOrphanedProcesses(projectRoot: string): void {

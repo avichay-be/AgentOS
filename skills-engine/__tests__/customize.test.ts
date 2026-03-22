@@ -10,7 +10,7 @@ import {
 import { CUSTOM_DIR } from '../constants.js';
 import {
   createTempDir,
-  setupNanoclawDir,
+  setupAgentOSDir,
   createMinimalState,
   cleanup,
   writeState,
@@ -27,7 +27,7 @@ describe('customize', () => {
 
   beforeEach(() => {
     tmpDir = createTempDir();
-    setupNanoclawDir(tmpDir);
+    setupAgentOSDir(tmpDir);
     createMinimalState(tmpDir);
     fs.mkdirSync(path.join(tmpDir, CUSTOM_DIR), { recursive: true });
     process.chdir(tmpDir);
@@ -122,7 +122,7 @@ describe('customize', () => {
     // Make the base file a directory to cause diff to exit with code 2
     const baseFilePath = path.join(
       tmpDir,
-      '.nanoclaw',
+      '.agentos',
       'base',
       'src',
       'app.ts',
