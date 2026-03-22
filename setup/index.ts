@@ -12,6 +12,7 @@ const STEPS: Record<
   environment: () => import('./environment.js'),
   channels: () => import('./channels.js'),
   container: () => import('./container.js'),
+  fabric: () => import('./fabric.js'),
   'whatsapp-auth': () => import('./whatsapp-auth.js'),
   groups: () => import('./groups.js'),
   register: () => import('./register.js'),
