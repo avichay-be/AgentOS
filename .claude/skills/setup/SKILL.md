@@ -1,11 +1,13 @@
 ---
 name: setup
-description: Run initial AgentOS setup. Use when user wants to install dependencies, authenticate messaging channels, register their main channel, or start the background services. Triggers on "setup", "install", "configure agentos", or first-time setup requests.
+description: Run initial AgentOS setup. Use when user wants to install dependencies, authenticate messaging channels, connect Azure Fabric, register their main channel, or start the background services. Triggers on "setup", "install", "configure agentos", or first-time setup requests.
 ---
 
 # AgentOS Setup
 
 Run setup steps automatically. Only pause when user action is required (channel authentication, configuration choices). Setup uses `bash setup.sh` for bootstrap, then `npx tsx setup/index.ts --step <name>` for all other steps. Steps emit structured status blocks to stdout. Verbose logs go to `logs/setup.log`.
+
+This flow should work the same whether the project came from `git clone` or from an extracted zip file, as long as the current working directory is the AgentOS project root.
 
 **Principle:** When something is broken or missing, fix it. Don't tell the user to go fix it themselves unless it genuinely requires their manual action (e.g. authenticating a channel, pasting a secret token). If a dependency is missing, install it. If a service won't start, diagnose and repair. Ask the user for permission when needed, then do the work.
 
@@ -31,7 +33,39 @@ Run `npx tsx setup/index.ts --step environment` and parse the status block.
 - If HAS_REGISTERED_GROUPS=true → note existing config, offer to skip or reconfigure
 - Record APPLE_CONTAINER and DOCKER values for step 3
 
-## 3. Container Runtime
+## 3. Optional Azure Fabric Autoconnect
+
+AskUserQuestion: Do you want AgentOS to auto-connect to Azure Fabric in read-only mode?
+
+**If yes:**
+
+1. Ensure the user is already logged in with Azure CLI: `az account show`
+2. Ask for the Fabric workspace name or ID
+3. Run:
+
+```bash
+npx tsx setup/index.ts --step fabric -- --workspace-name "<workspace-name>"
+```
+
+Or:
+
+```bash
+npx tsx setup/index.ts --step fabric -- --workspace-id "<workspace-id>"
+```
+
+This step will:
+- create or reuse an Azure app registration (default name: `agentos`)
+- create a service principal
+- create a fresh client secret
+- grant the app `Viewer` access to the selected Fabric workspace
+- apply the `add-fabric-readonly` skill if it has not been applied yet
+- write `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and `FABRIC_WORKSPACE_ID` into `.env`
+
+Important: run this before the container build step so the build includes the Fabric MCP changes when the skill is newly applied.
+
+**If no:** continue without Fabric.
+
+## 4. Container Runtime
 
 ### 3a. Choose runtime
 
@@ -73,7 +107,7 @@ Run `npx tsx setup/index.ts --step container -- --runtime <chosen>` and parse th
 
 **If TEST_OK=false but BUILD_OK=true:** The image built but won't run. Check logs — common cause is runtime not fully started. Wait a moment and retry the test.
 
-## 4. Claude Authentication (No Script)
+## 5. Claude Authentication (No Script)
 
 If HAS_ENV=true from step 2, read `.env` and check for `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`. If present, confirm with user: keep or reconfigure?
 
@@ -83,7 +117,7 @@ AskUserQuestion: Claude subscription (Pro/Max) vs Anthropic API key?
 
 **API key:** Tell user to add `ANTHROPIC_API_KEY=<key>` to `.env`.
 
-## 5. Set Up Channels
+## 6. Set Up Channels
 
 AskUserQuestion (multiSelect): Which messaging channels do you want to enable?
 - WhatsApp (authenticates via QR code or pairing code)
@@ -109,14 +143,14 @@ Each skill will:
 
 **After all channel skills complete**, continue to step 6.
 
-## 6. Mount Allowlist
+## 7. Mount Allowlist
 
 AskUserQuestion: Agent access to external directories?
 
 **No:** `npx tsx setup/index.ts --step mounts -- --empty`
 **Yes:** Collect paths/permissions. `npx tsx setup/index.ts --step mounts -- --json '{"allowedRoots":[...],"blockedPatterns":[],"nonMainReadOnly":true}'`
 
-## 7. Start Service
+## 8. Start Service
 
 If service already running: unload first.
 - macOS: `launchctl unload ~/Library/LaunchAgents/com.agentos.plist`
@@ -146,7 +180,7 @@ Replace `USERNAME` with the actual username (from `whoami`). Run the two `sudo` 
 - Linux: check `systemctl --user status agentos`.
 - Re-run the service step after fixing.
 
-## 8. Verify
+## 9. Verify
 
 Run `npx tsx setup/index.ts --step verify` and parse the status block.
 
@@ -155,6 +189,7 @@ Run `npx tsx setup/index.ts --step verify` and parse the status block.
 - SERVICE=not_found → re-run step 7
 - CREDENTIALS=missing → re-run step 4
 - CHANNEL_AUTH shows `not_found` for any channel → re-invoke that channel's skill (e.g. `/add-telegram`)
+- FABRIC=not_configured → re-run `npx tsx setup/index.ts --step fabric -- --workspace-name "<workspace-name>"`
 - REGISTERED_GROUPS=0 → re-invoke the channel skills from step 5
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 

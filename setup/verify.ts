@@ -112,6 +112,10 @@ export async function run(_args: string[]): Promise<void> {
     'SLACK_BOT_TOKEN',
     'SLACK_APP_TOKEN',
     'DISCORD_BOT_TOKEN',
+    'AZURE_TENANT_ID',
+    'AZURE_CLIENT_ID',
+    'AZURE_CLIENT_SECRET',
+    'FABRIC_WORKSPACE_ID',
   ]);
 
   const channelAuth: Record<string, string> = {};
@@ -134,6 +138,16 @@ export async function run(_args: string[]): Promise<void> {
   }
   if (process.env.DISCORD_BOT_TOKEN || envVars.DISCORD_BOT_TOKEN) {
     channelAuth.discord = 'configured';
+  }
+
+  let fabric = 'not_configured';
+  if (
+    (process.env.AZURE_TENANT_ID || envVars.AZURE_TENANT_ID) &&
+    (process.env.AZURE_CLIENT_ID || envVars.AZURE_CLIENT_ID) &&
+    (process.env.AZURE_CLIENT_SECRET || envVars.AZURE_CLIENT_SECRET) &&
+    (process.env.FABRIC_WORKSPACE_ID || envVars.FABRIC_WORKSPACE_ID)
+  ) {
+    fabric = 'configured';
   }
 
   const configuredChannels = Object.keys(channelAuth);
@@ -182,6 +196,7 @@ export async function run(_args: string[]): Promise<void> {
     CREDENTIALS: credentials,
     CONFIGURED_CHANNELS: configuredChannels.join(','),
     CHANNEL_AUTH: JSON.stringify(channelAuth),
+    FABRIC: fabric,
     REGISTERED_GROUPS: registeredGroups,
     MOUNT_ALLOWLIST: mountAllowlist,
     STATUS: status,
