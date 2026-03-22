@@ -1,0 +1,21 @@
+skill: fabric-readonly
+version: 1.0.0
+description: "Read-only Azure Fabric integration via custom MCP server"
+core_version: 0.1.0
+adds:
+  - container/agent-runner/src/fabric-readonly-mcp-stdio.ts
+  - container/skills/fabric-readonly/SKILL.md
+modifies:
+  - container/agent-runner/src/index.ts
+  - src/container-runner.ts
+structured:
+  npm_dependencies:
+    "@azure/identity": "^4.0.0"
+  env_additions:
+    - AZURE_TENANT_ID
+    - AZURE_CLIENT_ID
+    - AZURE_CLIENT_SECRET
+    - FABRIC_WORKSPACE_ID
+conflicts: []
+depends: []
+test: "npm run build"
