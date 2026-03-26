@@ -2,172 +2,351 @@
 
 ## Goal
 
-Build a custom Web UI for AgentOS as an operator console, not as a generic chat product.
+Build a Web UI for AgentOS as an operator console for the existing orchestrator, not as a separate chat product.
 
-The UI should expose the system's real operating model:
+The UI should expose the real system model already present in the codebase:
 
 - channels
 - registered groups
-- message history
+- recent messages
 - scheduled tasks
-- runtime health
+- task run history
+- queue and runtime state
 - logs and recent agent activity
 
-## Why Custom UI
+## Deployment Decision
 
-AgentOS is centered around a single-process orchestrator, SQLite state, scheduled tasks, per-group isolation, and container execution. That maps poorly to generic chat UIs.
+### Short Answer
 
-A custom UI is a better fit because it can make first-class concepts out of:
+The Web UI should **not** run inside the per-group agent container.
 
-- main group vs regular groups
-- channel ownership of chats
-- task lifecycle
-- queue and runtime state
-- container-backed agent execution
+It should sit on top of the **main host process** that already owns:
 
-## Product Shape
+- SQLite state in `src/db.ts`
+- in-memory runtime state in `src/index.ts`
+- queue/process state in `src/group-queue.ts`
+- scheduler state in `src/task-scheduler.ts`
+- IPC control flow in `src/ipc.ts`
 
-The Web UI should be an admin and operations surface.
+### Recommended Layout
 
-It should help answer:
+Use a split design:
 
-- Is the system healthy?
-- Which channels are connected?
-- Which groups are active and registered?
-- Why did a message not get a response?
-- Which tasks are due, failing, or paused?
-- What is the agent doing right now?
+- backend API runs in the main AgentOS Node process
+- frontend runs as a separate app during development
+- frontend is built into static assets for production and served by the host API
 
-## Recommended Architecture
-
-### Backend
-
-Add a small in-process HTTP API inside AgentOS.
-
-Suggested location:
+Recommended folders:
 
 - `src/web/server.ts`
 - `src/web/routes/*`
 - `src/web/services/*`
-
-The API should wrap existing state and database functions rather than creating a parallel control plane.
-
-Primary integration points:
-
-- `src/index.ts`
-- `src/db.ts`
-- `src/task-scheduler.ts`
-- `src/types.ts`
-
-### Frontend
-
-Add a separate frontend app:
-
 - `webui/`
 
-Suggested stack:
+### Why Not Inside the Agent Container
 
-- React
-- Vite
-- TypeScript
+The container at `container/agent-runner/` is an ephemeral execution environment for Claude, not the control plane.
 
-For v1, use polling. Add SSE later if needed.
+Running the UI there would be wrong because it does not own:
 
-## V1 Scope
+- channel connections
+- the authoritative SQLite database lifecycle
+- the live queue state
+- the registered channel instances
+- scheduler control
 
-Start as read-heavy with a few safe write actions.
+It would also weaken the isolation model by mixing operator control with agent execution.
 
-### Read Features
+### Docker Guidance
 
-- system overview
-- channel status
+There are two different Docker questions here:
+
+1. Should the UI run inside the **agent runner** container?
+
+No.
+
+2. Can the host app and Web UI be packaged together in a normal app container later?
+
+Yes. If AgentOS itself is later deployed in Docker, the HTTP API and static Web UI can ship with the main app process container. They should still remain separate from the transient per-group agent containers.
+
+## Product Shape
+
+The Web UI is an operations surface for the owner of AgentOS.
+
+It should answer:
+
+- Is AgentOS healthy?
+- Which channels are connected?
+- Which groups are registered?
+- What messages came in recently?
+- Why did a group not get a response?
+- Which tasks are active, paused, failing, or overdue?
+- What is running right now?
+
+It should not try to replace the AI-native workflow described in `README.md`.
+
+## Existing Data Sources
+
+The current codebase already contains most of the needed data.
+
+### SQLite-backed data
+
+From `src/db.ts`:
+
+- chats
 - registered groups
-- recent messages per group
+- messages
 - scheduled tasks
-- task run history
-- recent logs
-- current runtime state
+- task run logs
+- sessions
+- router cursors
 
-### Write Features
+These map naturally to:
+
+- groups list
+- message history
+- task manager
+- task detail pages
+- conversation inspector
+
+### In-memory runtime data
+
+From `src/index.ts` and `src/group-queue.ts`:
+
+- connected channel instances
+- `lastAgentTimestamp`
+- active queue entries
+- pending message state
+- active container process references
+- per-group runtime status
+
+This data is not persisted today, so the API needs an explicit runtime snapshot layer.
+
+### Process and log data
+
+From `src/logger.ts` and process state:
+
+- current log stream
+- startup/shutdown errors
+- warnings from channel/runtime/scheduler paths
+
+For v1, logs can be exposed from an in-memory ring buffer attached to the logger transport rather than by scraping terminal output.
+
+## Backend Design
+
+### Principle
+
+Do not create a parallel control plane.
+
+The Web API should wrap the current orchestrator state and database access. It should not re-implement scheduling, routing, or queue logic in a separate service.
+
+### Required Backend Additions
+
+#### 1. Web server bootstrap
+
+Add HTTP startup from `src/index.ts`.
+
+Suggested files:
+
+- `src/web/server.ts`
+- `src/web/app.ts`
+
+Responsibilities:
+
+- bind to `127.0.0.1` by default
+- serve `/api/*`
+- optionally serve static frontend assets in production
+
+#### 2. App context object
+
+The web layer needs read access to live state without reaching into module globals in an ad hoc way.
+
+Create a small context object passed from `src/index.ts` containing:
+
+- `channels`
+- `queue`
+- `registeredGroups`
+- `sessions`
+- `getAvailableGroups`
+- `syncGroups`
+
+This avoids duplicating ownership.
+
+#### 3. Queue/runtime snapshot methods
+
+`src/group-queue.ts` needs read-only inspection helpers for the UI.
+
+Add methods such as:
+
+- `getSnapshot()`
+- `getGroupSnapshot(groupJid)`
+
+Expose:
+
+- `activeCount`
+- waiting groups
+- pending tasks per group
+- pending messages flag
+- idle-waiting status
+- active container name
+- current group folder
+- retry count
+
+#### 4. Channel snapshot service
+
+The UI needs to know:
+
+- installed channel names
+- whether each channel connected successfully
+- whether each channel reports `isConnected()`
+
+This should come from the actual instantiated channels in `src/index.ts`.
+
+#### 5. Log buffering
+
+Add a bounded in-memory log collector for recent UI inspection.
+
+V1 target:
+
+- keep the last 500 to 1000 structured log entries
+- expose filtered retrieval by level, group, and channel where possible
+
+#### 6. Safe mutation handlers
+
+V1 write actions should be limited to scheduled tasks:
 
 - pause task
 - resume task
 - delete task
 
-Defer these until later:
+These already map cleanly to `updateTask()` and `deleteTask()` in `src/db.ts`.
 
-- sending manual chat messages
-- editing mounts
-- full group registration flows
-- auth bootstrap flows
-- advanced config editing
+## Frontend Design
 
-## Example Screens
+### Stack
 
-### 1. Overview Dashboard
+Use:
 
-Purpose: fast health check for the whole system.
+- React
+- Vite
+- TypeScript
 
-Panels:
+### Data transport
 
-- channels connected/disconnected
-- known chats and registered groups
-- active, paused, and failing tasks
-- queue depth and current runtime activity
+For v1:
 
-Additional sections:
+- normal REST endpoints
+- polling every 3 to 10 seconds for runtime-heavy views
 
-- recent task failures
-- latest agent runs
-- recently active groups
+Later:
 
-### 2. Groups Page
+- SSE for logs
+- SSE for runtime updates if polling feels too stale
 
-Purpose: inspect group state and configuration.
+### Production serving
 
-Columns:
+Use a pragmatic model:
 
-- group name
+- development: Vite dev server on its own port
+- production: `webui/dist` served by the AgentOS HTTP server
+
+That keeps local iteration simple and deployment simple.
+
+## V1 Scope
+
+Start read-heavy with a small number of safe controls.
+
+### Read features
+
+- overview dashboard
+- channel status
+- groups list
+- group detail
+- recent messages
+- tasks list
+- task detail with run history
+- runtime view
+- recent logs
+
+### Write features
+
+- pause task
+- resume task
+- delete task
+- trigger group metadata sync manually
+
+### Explicitly out of scope for v1
+
+- live chat console
+- arbitrary message send
+- mount editing
+- auth bootstrap
+- container configuration editing
+- direct filesystem browsing through the UI
+
+## Screens
+
+### 1. Overview
+
+Purpose: quick system health.
+
+Widgets:
+
+- connected vs disconnected channels
+- registered groups count
+- active, paused, completed tasks
+- groups waiting in queue
+- currently running containers
+- recent failures
+
+### 2. Groups
+
+Purpose: inspect registration and group state.
+
+List columns:
+
+- name
 - channel
-- JID
-- registered status
+- jid
 - folder
-- trigger required
+- registered status
+- main-group flag
+- requires trigger
 - last activity
 
-Group detail view:
+Detail view:
 
 - recent messages
-- group settings
+- session id presence
 - container config summary
-- current session id
-- tasks for that group
+- task list for the group
+- runtime state for the group
 
-### 3. Task Manager
+### 3. Tasks
 
-Purpose: manage scheduled work.
+Purpose: operate scheduled jobs safely.
 
-Columns:
+List columns:
 
 - prompt preview
+- group
 - schedule type
 - schedule value
 - next run
 - last run
 - last result
 - status
-- linked group
 
-Task detail view:
+Detail view:
 
+- full prompt
 - run history
-- duration
 - recent errors
 - pause/resume/delete actions
 
-### 4. Conversation Inspector
+### 4. Conversations
 
-Purpose: debug routing and response issues.
+Purpose: debug routing and missed-response issues.
 
 Show:
 
@@ -176,153 +355,146 @@ Show:
 - sender
 - timestamps
 - trigger presence
-- whether agent processing started
-- whether the run failed
+- whether the group is registered
+- whether runtime processing was likely attempted
 
-### 5. Runtime and Logs
+### 5. Runtime
 
-Purpose: inspect live system behavior.
-
-Show:
-
-- active queue entries
-- currently running containers
-- recent warnings/errors
-- recent agent output snippets
-- filters by group and channel
-
-### 6. Main Group Control Center
-
-Purpose: expose the special admin role of the main group.
+Purpose: show live operating state that is not fully visible in SQLite.
 
 Show:
 
-- all groups across channels
-- all scheduled tasks
-- cross-group search
-- global memory references
-- system-level actions
+- active queue count
+- waiting groups
+- group-level active/idle state
+- current container names
+- retry backoff indicators
+- recent runtime logs
 
 ## API Plan
 
-### Read Endpoints
+### Read endpoints
 
 - `GET /api/health`
 - `GET /api/overview`
 - `GET /api/channels`
 - `GET /api/groups`
 - `GET /api/groups/:jid`
-- `GET /api/groups/:jid/messages`
+- `GET /api/groups/:jid/messages?limit=100&before=...`
+- `GET /api/groups/:jid/runtime`
 - `GET /api/tasks`
 - `GET /api/tasks/:id`
 - `GET /api/tasks/:id/runs`
 - `GET /api/runtime`
 - `GET /api/logs`
 
-### Mutation Endpoints
+### Write endpoints
 
+- `POST /api/channels/sync-groups`
 - `POST /api/tasks/:id/pause`
 - `POST /api/tasks/:id/resume`
 - `DELETE /api/tasks/:id`
 
-Later:
+### Example response shapes
 
-- `POST /api/groups/:jid/register`
-- `PATCH /api/groups/:jid`
-- `POST /api/groups/:jid/message`
+#### `GET /api/overview`
+
+Should aggregate:
+
+- channel summary
+- queue summary
+- group summary
+- task summary
+- recent errors
+
+#### `GET /api/runtime`
+
+Should return a normalized snapshot of:
+
+- queue totals
+- active groups
+- waiting groups
+- active containers
+- last agent activity per group if available
 
 ## Data Mapping
 
-Existing backend data already covers most of the UI:
+### Straight from the database
 
-- chats and messages from `src/db.ts`
-- registered groups from `src/db.ts`
-- tasks and run logs from `src/db.ts`
-- runtime state from `src/index.ts`
+- `getAllChats()`
+- `getAllRegisteredGroups()`
+- `getAllTasks()`
+- `getTaskById()`
+- `getTasksForGroup()`
+- `getMessagesSince()` for relative views
 
-What will likely need explicit API aggregation:
+V1 likely also needs dedicated paginated read helpers such as:
 
-- channel connection status
+- `getMessagesForChat(chatJid, limit, before)`
+- `getTaskRunLogs(taskId, limit)`
+
+### Requires light new aggregation
+
+- channel connection state
 - queue depth
 - running containers
-- last agent activity per group
-- health summary for overview cards
+- last runtime activity
+- overview counters
+- recent errors/log snippets
 
 ## Milestones
 
-### M1
+### M1. Runtime exposure
 
-Add HTTP server and read-only APIs for:
+- add AppContext from `src/index.ts`
+- add queue snapshot methods
+- add in-memory recent-log buffer
+- add read-only `/api/health` and `/api/runtime`
 
-- overview
-- groups
-- tasks
-- runtime
+### M2. Read-only operator UI
 
-### M2
+- scaffold `webui/`
+- build Overview, Groups, Tasks, Runtime pages
+- add polling-based data layer
 
-Build frontend pages:
+### M3. Task controls
 
-- Overview
-- Groups
-- Tasks
-- Runtime
+- add pause/resume/delete endpoints
+- wire task actions into the UI
+- add optimistic refresh with server confirmation
 
-### M3
+### M4. Conversation and debugging views
 
-Add safe task actions:
+- add paginated message endpoints
+- add task run history endpoints
+- add conversation inspector page
 
-- pause
-- resume
-- delete
+### M5. Live updates
 
-### M4
+- add SSE for logs
+- optionally add SSE for runtime deltas
 
-Add live updates:
+## Security
 
-- SSE for logs
-- auto-refresh for runtime and task state
+The Web UI changes the threat model slightly because it introduces an operator surface.
 
-### M5
+V1 rules:
 
-Add richer admin flows:
+- bind to localhost by default
+- no public exposure by default
+- require an auth layer before allowing non-localhost use
+- redact secrets from API payloads and logs
+- keep mutation endpoints narrow
+- do not proxy raw shell execution through the UI
 
-- group registration
-- group config editing
-- message send/debug actions
+If remote access is needed later, put it behind real authentication rather than assuming a trusted network.
 
-## Risks
+## Recommendation
 
-### Architectural
+Build the Web UI **outside the agent runner containers**, with:
 
-- important runtime state is currently held in memory in `src/index.ts`
-- some operator data is not yet exposed through reusable backend services
+- an in-process HTTP API inside the main AgentOS host process
+- a separate React frontend in `webui/`
+- production static serving from the host API
 
-### Performance
-
-- message history can grow large
-- logs can grow large
-- APIs need pagination and response size limits
-
-### Security
-
-- bind localhost by default
-- require auth before any remote exposure
-- redact secrets from logs and API payloads
-- restrict mutation endpoints carefully
-
-### Product
-
-The UI should stay narrow. AgentOS currently leans toward an AI-native workflow instead of dashboards. The Web UI should support operations, not replace the core product model.
-
-## Initial Navigation Proposal
-
-For a pragmatic v1:
-
-- Overview
-- Groups
-- Tasks
-- Messages
-- Runtime
-
-This is enough to make the system understandable without turning AgentOS into a full chat SaaS UI.
+That gives the UI access to the real state and control surfaces without breaking the container isolation model that AgentOS is built around.
