@@ -117,7 +117,8 @@ export class WebChannel implements Channel {
   }
 
   subscribe(jid: string, subscriber: WebChannelSubscriber): () => void {
-    const listeners = this.subscribers.get(jid) || new Set<WebChannelSubscriber>();
+    const listeners =
+      this.subscribers.get(jid) || new Set<WebChannelSubscriber>();
     listeners.add(subscriber);
     this.subscribers.set(jid, listeners);
 

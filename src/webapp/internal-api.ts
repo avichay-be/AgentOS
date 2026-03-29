@@ -1,5 +1,8 @@
 import { WEBAPP_INTERNAL_BASE_URL, WEB_INTERNAL_API_TOKEN } from '../config.js';
-import { DashboardSummary, PublishedDashboardDocument } from '../web/dashboards.js';
+import {
+  DashboardSummary,
+  PublishedDashboardDocument,
+} from '../web/dashboards.js';
 import { WebWorkspaceIdentity } from '../types.js';
 
 async function fetchInternal(
@@ -7,7 +10,11 @@ async function fetchInternal(
   init: RequestInit = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers || {});
-  if (!headers.has('Content-Type') && init.body && !(init.body instanceof FormData)) {
+  if (
+    !headers.has('Content-Type') &&
+    init.body &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set('Content-Type', 'application/json');
   }
   if (WEB_INTERNAL_API_TOKEN) {
@@ -50,7 +57,9 @@ export async function getOwnedWorkspaces(input: {
     tenantId: input.tenantId,
     userId: input.userId,
   });
-  const response = await fetchInternal(`/api/internal/workspaces?${params.toString()}`);
+  const response = await fetchInternal(
+    `/api/internal/workspaces?${params.toString()}`,
+  );
   const json = await readJson<{ workspaces: WebWorkspaceIdentity[] }>(response);
   return json.workspaces;
 }
@@ -71,11 +80,16 @@ export async function createWorkspaceChat(input: {
   return json.workspace;
 }
 
-export async function markWorkspaceOpened(jid: string): Promise<Record<string, unknown>> {
+export async function markWorkspaceOpened(
+  jid: string,
+): Promise<Record<string, unknown>> {
   return readJson(
-    await fetchInternal(`/api/internal/workspaces/${encodeURIComponent(jid)}/open`, {
-      method: 'POST',
-    }),
+    await fetchInternal(
+      `/api/internal/workspaces/${encodeURIComponent(jid)}/open`,
+      {
+        method: 'POST',
+      },
+    ),
   );
 }
 
@@ -122,8 +136,12 @@ export async function getWorkspaceAttachmentContent(
   );
 }
 
-export async function getWorkspaceDetail(jid: string): Promise<Record<string, unknown>> {
-  const response = await fetchInternal(`/api/workspaces/${encodeURIComponent(jid)}`);
+export async function getWorkspaceDetail(
+  jid: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetchInternal(
+    `/api/workspaces/${encodeURIComponent(jid)}`,
+  );
   return readJson(response);
 }
 
@@ -140,8 +158,12 @@ export async function getWorkspaceMessages(
   return readJson(response);
 }
 
-export async function getWorkspaceRuntime(jid: string): Promise<Record<string, unknown>> {
-  const response = await fetchInternal(`/api/groups/${encodeURIComponent(jid)}/runtime`);
+export async function getWorkspaceRuntime(
+  jid: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetchInternal(
+    `/api/groups/${encodeURIComponent(jid)}/runtime`,
+  );
   return readJson(response);
 }
 
@@ -162,7 +184,9 @@ export async function getWorkspaceDashboard(
   const response = await fetchInternal(
     `/api/workspaces/${encodeURIComponent(jid)}/dashboards/${encodeURIComponent(slug)}`,
   );
-  const json = await readJson<{ dashboard: PublishedDashboardDocument }>(response);
+  const json = await readJson<{ dashboard: PublishedDashboardDocument }>(
+    response,
+  );
   return json.dashboard;
 }
 
@@ -204,11 +228,15 @@ export async function getAdminTasks(): Promise<Record<string, unknown>> {
   return readJson(await fetchInternal('/api/tasks'));
 }
 
-export async function getAdminLogs(limit: number = 100): Promise<Record<string, unknown>> {
+export async function getAdminLogs(
+  limit: number = 100,
+): Promise<Record<string, unknown>> {
   return readJson(await fetchInternal(`/api/logs?limit=${limit}`));
 }
 
-export async function getAdminWorkspaces(): Promise<{ workspaces: WebWorkspaceIdentity[] }> {
+export async function getAdminWorkspaces(): Promise<{
+  workspaces: WebWorkspaceIdentity[];
+}> {
   return readJson(await fetchInternal('/api/workspaces'));
 }
 
@@ -218,7 +246,9 @@ export async function syncGroups(): Promise<Record<string, unknown>> {
   );
 }
 
-export async function pauseTask(taskId: string): Promise<Record<string, unknown>> {
+export async function pauseTask(
+  taskId: string,
+): Promise<Record<string, unknown>> {
   return readJson(
     await fetchInternal(`/api/tasks/${encodeURIComponent(taskId)}/pause`, {
       method: 'POST',
@@ -226,7 +256,9 @@ export async function pauseTask(taskId: string): Promise<Record<string, unknown>
   );
 }
 
-export async function resumeTask(taskId: string): Promise<Record<string, unknown>> {
+export async function resumeTask(
+  taskId: string,
+): Promise<Record<string, unknown>> {
   return readJson(
     await fetchInternal(`/api/tasks/${encodeURIComponent(taskId)}/resume`, {
       method: 'POST',
@@ -234,7 +266,9 @@ export async function resumeTask(taskId: string): Promise<Record<string, unknown
   );
 }
 
-export async function deleteTaskById(taskId: string): Promise<Record<string, unknown>> {
+export async function deleteTaskById(
+  taskId: string,
+): Promise<Record<string, unknown>> {
   return readJson(
     await fetchInternal(`/api/tasks/${encodeURIComponent(taskId)}/delete`, {
       method: 'DELETE',

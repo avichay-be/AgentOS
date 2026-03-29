@@ -51,7 +51,9 @@ function base64url(input: Buffer | string): string {
 }
 
 function hmacSign(value: string): string {
-  return base64url(createHmac('sha256', requireSessionSecret()).update(value).digest());
+  return base64url(
+    createHmac('sha256', requireSessionSecret()).update(value).digest(),
+  );
 }
 
 function signPayload(payload: unknown): string {
@@ -129,7 +131,9 @@ function getSecureCookieFlag(): boolean {
   return WEBAPP_PUBLIC_BASE_URL.startsWith('https://');
 }
 
-export function getSessionFromRequest(req: IncomingMessage): BrowserSession | null {
+export function getSessionFromRequest(
+  req: IncomingMessage,
+): BrowserSession | null {
   const cookies = parseCookies(req);
   const session = verifyPayload<BrowserSession>(cookies[SESSION_COOKIE]);
   if (!session) return null;
@@ -298,9 +302,7 @@ export async function exchangeEntraCodeForUser(
   }
 
   const issuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
-  const jwks = createRemoteJWKSet(
-    new URL(`${issuer}/discovery/v2.0/keys`),
-  );
+  const jwks = createRemoteJWKSet(new URL(`${issuer}/discovery/v2.0/keys`));
   const { payload } = await jwtVerify(tokenJson.id_token, jwks, {
     issuer,
     audience: clientId,
@@ -309,7 +311,9 @@ export async function exchangeEntraCodeForUser(
   return {
     tenantId: String(payload.tid || tenantId),
     userId: String(payload.oid || payload.sub),
-    displayName: String(payload.name || payload.preferred_username || payload.sub),
+    displayName: String(
+      payload.name || payload.preferred_username || payload.sub,
+    ),
     email:
       typeof payload.preferred_username === 'string'
         ? payload.preferred_username

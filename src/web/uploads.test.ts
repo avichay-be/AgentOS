@@ -64,12 +64,14 @@ describe('web uploads', () => {
     });
     for (const attachment of attachments) {
       expect(
-        fs.existsSync(resolveGroupFolderPath(folder) + `/${attachment.relative_path}`),
+        fs.existsSync(
+          resolveGroupFolderPath(folder) + `/${attachment.relative_path}`,
+        ),
       ).toBe(true);
     }
-    expect(
-      buildAttachmentPromptBlock(attachments),
-    ).toContain('/workspace/group/uploads/');
+    expect(buildAttachmentPromptBlock(attachments)).toContain(
+      '/workspace/group/uploads/',
+    );
   });
 
   it('rejects unsupported file types and oversized files', async () => {

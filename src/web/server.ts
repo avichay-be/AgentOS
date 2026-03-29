@@ -18,7 +18,12 @@ import {
   touchWebWorkspaceLastOpenedAt,
   updateTask,
 } from '../db.js';
-import { WEB_ALLOWED_ORIGINS, WEB_HOST, WEB_INTERNAL_API_TOKEN, WEB_PORT } from '../config.js';
+import {
+  WEB_ALLOWED_ORIGINS,
+  WEB_HOST,
+  WEB_INTERNAL_API_TOKEN,
+  WEB_PORT,
+} from '../config.js';
 import { GroupQueue } from '../group-queue.js';
 import { getRecentLogs, logger } from '../logger.js';
 import { Channel, RegisteredGroup, WebWorkspaceIdentity } from '../types.js';
@@ -28,11 +33,7 @@ import {
   listPublishedDashboards,
   publishLatestDashboard,
 } from './dashboards.js';
-import {
-  getFrontendCss,
-  getFrontendHtml,
-  getFrontendJs,
-} from './frontend.js';
+import { getFrontendCss, getFrontendHtml, getFrontendJs } from './frontend.js';
 import {
   createWebWorkspaceChat,
   ensureWebWorkspace,
@@ -64,7 +65,8 @@ function inferChannelFromJid(jid: string): string {
   if (jid.startsWith('dc:')) return 'discord';
   if (jid.startsWith('slack:')) return 'slack';
   if (jid.startsWith('web:')) return 'web';
-  if (jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net')) return 'whatsapp';
+  if (jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net'))
+    return 'whatsapp';
   return 'unknown';
 }
 
@@ -136,7 +138,9 @@ function toRequestHeaders(
   return normalized;
 }
 
-function isIncomingMultipartFile(entry: unknown): entry is IncomingMultipartFile {
+function isIncomingMultipartFile(
+  entry: unknown,
+): entry is IncomingMultipartFile {
   return (
     typeof entry === 'object' &&
     entry !== null &&
@@ -179,9 +183,7 @@ function writeBinary(
   res.end(body);
 }
 
-async function parseIncomingWorkspaceMessage(
-  req: IncomingMessage,
-): Promise<{
+async function parseIncomingWorkspaceMessage(req: IncomingMessage): Promise<{
   text: string;
   senderId: string;
   senderName: string;
@@ -196,9 +198,11 @@ async function parseIncomingWorkspaceMessage(
     const senderName = String(form.get('senderName') || '').trim();
     const text = String(form.get('text') || '').trim();
     const providedMessageId = String(form.get('messageId') || '').trim();
-    const files = form.getAll('files').filter((entry) =>
-      isIncomingMultipartFile(entry),
-    ) as IncomingMultipartFile[];
+    const files = form
+      .getAll('files')
+      .filter((entry) =>
+        isIncomingMultipartFile(entry),
+      ) as IncomingMultipartFile[];
 
     return {
       text,
@@ -388,8 +392,9 @@ function buildWorkspaceSummary(
   const groups = context.getRegisteredGroups();
   const group = groups[workspace.jid];
   const sessions = context.getSessions();
-  const taskCount = getAllTasks().filter((task) => task.chat_jid === workspace.jid)
-    .length;
+  const taskCount = getAllTasks().filter(
+    (task) => task.chat_jid === workspace.jid,
+  ).length;
   const runtime = context.queue.getGroupSnapshot(workspace.jid);
   const dashboards = listPublishedDashboards(workspace.folder);
 
@@ -504,7 +509,10 @@ async function handleApiRequest(
   res: ServerResponse,
   context: WebServerContext,
 ): Promise<void> {
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const url = new URL(
+    req.url || '/',
+    `http://${req.headers.host || 'localhost'}`,
+  );
   const path = url.pathname;
   const corsOrigin = getAllowedCorsOrigin(req);
 
@@ -517,8 +525,10 @@ async function handleApiRequest(
     return;
   }
 
-  if (path.startsWith('/api/internal/') &&
-      !requireInternalToken(req, res, corsOrigin)) {
+  if (
+    path.startsWith('/api/internal/') &&
+    !requireInternalToken(req, res, corsOrigin)
+  ) {
     return;
   }
 
@@ -738,13 +748,23 @@ async function handleApiRequest(
         try {
           const dashboard = getPublishedDashboard(workspace.folder, slug);
           if (!dashboard || dashboard.kind !== 'html') {
-            writeJson(res, 404, { error: 'Dashboard HTML not found' }, corsOrigin);
+            writeJson(
+              res,
+              404,
+              { error: 'Dashboard HTML not found' },
+              corsOrigin,
+            );
             return;
           }
 
           const html = getPublishedDashboardHtml(workspace.folder, slug);
           if (!html) {
-            writeJson(res, 404, { error: 'Dashboard HTML not found' }, corsOrigin);
+            writeJson(
+              res,
+              404,
+              { error: 'Dashboard HTML not found' },
+              corsOrigin,
+            );
             return;
           }
 
@@ -757,7 +777,12 @@ async function handleApiRequest(
           );
         } catch (error) {
           logger.warn({ error, slug }, 'Failed to serve dashboard HTML');
-          writeJson(res, 400, { error: 'Dashboard HTML is invalid' }, corsOrigin);
+          writeJson(
+            res,
+            400,
+            { error: 'Dashboard HTML is invalid' },
+            corsOrigin,
+          );
         }
         return;
       }
@@ -771,7 +796,12 @@ async function handleApiRequest(
         writeJson(res, 200, { dashboard }, corsOrigin);
       } catch (error) {
         logger.warn({ error, slug }, 'Failed to read dashboard artifact');
-        writeJson(res, 400, { error: 'Dashboard artifact is invalid' }, corsOrigin);
+        writeJson(
+          res,
+          400,
+          { error: 'Dashboard artifact is invalid' },
+          corsOrigin,
+        );
       }
       return;
     }
@@ -784,12 +814,13 @@ async function handleApiRequest(
 
   if (req.method === 'POST' && path === '/api/internal/workspaces/ensure') {
     const body = (await readJsonBody(req)) as Partial<WebWorkspaceIdentity>;
-    if (
-      !body.tenantId ||
-      !body.userId ||
-      !body.displayName
-    ) {
-      writeJson(res, 400, { error: 'Missing workspace identity fields' }, corsOrigin);
+    if (!body.tenantId || !body.userId || !body.displayName) {
+      writeJson(
+        res,
+        400,
+        { error: 'Missing workspace identity fields' },
+        corsOrigin,
+      );
       return;
     }
 
@@ -814,7 +845,12 @@ async function handleApiRequest(
     const tenantId = url.searchParams.get('tenantId')?.trim() || '';
     const userId = url.searchParams.get('userId')?.trim() || '';
     if (!tenantId || !userId) {
-      writeJson(res, 400, { error: 'tenantId and userId are required' }, corsOrigin);
+      writeJson(
+        res,
+        400,
+        { error: 'tenantId and userId are required' },
+        corsOrigin,
+      );
       return;
     }
 
@@ -832,7 +868,12 @@ async function handleApiRequest(
   if (req.method === 'POST' && path === '/api/internal/workspaces') {
     const body = (await readJsonBody(req)) as Partial<WebWorkspaceIdentity>;
     if (!body.tenantId || !body.userId || !body.displayName) {
-      writeJson(res, 400, { error: 'Missing workspace identity fields' }, corsOrigin);
+      writeJson(
+        res,
+        400,
+        { error: 'Missing workspace identity fields' },
+        corsOrigin,
+      );
       return;
     }
 
@@ -907,7 +948,12 @@ async function handleApiRequest(
         writeJson(
           res,
           400,
-          { error: error instanceof Error ? error.message : 'Invalid message payload' },
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Invalid message payload',
+          },
           corsOrigin,
         );
       }
@@ -941,9 +987,17 @@ async function handleApiRequest(
         return;
       }
 
-      const absolutePath = resolveAttachmentAbsolutePath(workspace.folder, attachment);
+      const absolutePath = resolveAttachmentAbsolutePath(
+        workspace.folder,
+        attachment,
+      );
       if (!fs.existsSync(absolutePath)) {
-        writeJson(res, 404, { error: 'Attachment content not found' }, corsOrigin);
+        writeJson(
+          res,
+          404,
+          { error: 'Attachment content not found' },
+          corsOrigin,
+        );
         return;
       }
 
@@ -1018,12 +1072,7 @@ export async function startWebServer(context: WebServerContext): Promise<void> {
       }
 
       if (req.method === 'GET' && path === '/app.js') {
-        writeText(
-          res,
-          200,
-          getFrontendJs(),
-          'text/javascript; charset=utf-8',
-        );
+        writeText(res, 200, getFrontendJs(), 'text/javascript; charset=utf-8');
         return;
       }
 

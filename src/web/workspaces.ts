@@ -177,7 +177,8 @@ export function createWebWorkspaceChat(
     chatId = `chat-${randomUUID().slice(0, 8)}`;
   }
 
-  const title = (input.title || '').trim() || createDefaultTitle(existingTitles);
+  const title =
+    (input.title || '').trim() || createDefaultTitle(existingTitles);
   const existing = getWebWorkspaceByOwnerAndChatId(
     input.tenantId,
     input.userId,

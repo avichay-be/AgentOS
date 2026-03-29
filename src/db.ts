@@ -21,9 +21,9 @@ function getTableColumns(
   tableName: string,
 ): string[] {
   return (
-    database
-      .prepare(`PRAGMA table_info(${tableName})`)
-      .all() as Array<{ name: string }>
+    database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{
+      name: string;
+    }>
   ).map((column) => column.name);
 }
 
@@ -794,7 +794,10 @@ export function logTaskRun(log: TaskRunLog): void {
   );
 }
 
-export function getTaskRunLogs(taskId: string, limit: number = 50): TaskRunLog[] {
+export function getTaskRunLogs(
+  taskId: string,
+  limit: number = 50,
+): TaskRunLog[] {
   const safeLimit = Math.max(1, Math.min(limit, 200));
   return db
     .prepare(
@@ -986,7 +989,9 @@ function mapWebWorkspaceRow(row: WebWorkspaceRow): WebWorkspaceIdentity {
 
 export function upsertWebWorkspace(workspace: WebWorkspaceIdentity): void {
   if (!isValidGroupFolder(workspace.folder)) {
-    throw new Error(`Invalid group folder "${workspace.folder}" for ${workspace.jid}`);
+    throw new Error(
+      `Invalid group folder "${workspace.folder}" for ${workspace.jid}`,
+    );
   }
 
   db.prepare(
@@ -1209,9 +1214,10 @@ export function updateWebWorkspaceOwnerProfile(
 }
 
 export function touchWebWorkspaceLastOpenedAt(jid: string, at?: string): void {
-  db.prepare(
-    `UPDATE web_workspaces SET last_opened_at = ? WHERE jid = ?`,
-  ).run(at || new Date().toISOString(), jid);
+  db.prepare(`UPDATE web_workspaces SET last_opened_at = ? WHERE jid = ?`).run(
+    at || new Date().toISOString(),
+    jid,
+  );
 }
 
 export function getMessageAttachment(

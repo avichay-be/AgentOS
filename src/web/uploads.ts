@@ -63,7 +63,10 @@ export function resolveAttachmentAbsolutePath(
   groupFolder: string,
   attachment: MessageAttachment,
 ): string {
-  return path.resolve(resolveGroupFolderPath(groupFolder), attachment.relative_path);
+  return path.resolve(
+    resolveGroupFolderPath(groupFolder),
+    attachment.relative_path,
+  );
 }
 
 export function buildAttachmentPromptBlock(
@@ -92,7 +95,9 @@ export async function saveUploadedFiles(params: {
 
   if (files.length === 0) return [];
   if (files.length > MAX_FILES_PER_MESSAGE) {
-    throw new Error(`Too many files. Max ${MAX_FILES_PER_MESSAGE} attachments.`);
+    throw new Error(
+      `Too many files. Max ${MAX_FILES_PER_MESSAGE} attachments.`,
+    );
   }
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);

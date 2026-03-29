@@ -187,7 +187,9 @@ function collapseWhitespace(value: string): string {
 function extractHtmlTitle(html: string): string | undefined {
   const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   if (!match) return undefined;
-  return collapseWhitespace(decodeHtmlEntities(match[1].replace(/<[^>]*>/g, '')));
+  return collapseWhitespace(
+    decodeHtmlEntities(match[1].replace(/<[^>]*>/g, '')),
+  );
 }
 
 function extractMetaContent(html: string, name: string): string | undefined {
@@ -213,7 +215,10 @@ function inferTitleFromSlug(slug: string): string {
   return words.join(' ') || 'Dashboard';
 }
 
-function normalizeUpdatedAt(value: string | undefined, fallbackDate: Date): string {
+function normalizeUpdatedAt(
+  value: string | undefined,
+  fallbackDate: Date,
+): string {
   if (!value) return fallbackDate.toISOString();
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return fallbackDate.toISOString();
@@ -273,7 +278,9 @@ function createPublishedDashboardSlug(date: Date): string {
   return `dashboard-${compact}`;
 }
 
-export function listPublishedDashboards(groupFolder: string): DashboardSummary[] {
+export function listPublishedDashboards(
+  groupFolder: string,
+): DashboardSummary[] {
   const summaries = new Map<string, DashboardSummary>();
   const dashboardDir = getDashboardDir(groupFolder);
   if (fs.existsSync(dashboardDir)) {
@@ -319,7 +326,10 @@ export function listPublishedDashboards(groupFolder: string): DashboardSummary[]
     const legacyDashboardPath = getLegacyDashboardPath(groupFolder);
     if (fs.existsSync(legacyDashboardPath)) {
       try {
-        const artifact = parseHtmlDashboardFile(legacyDashboardPath, 'dashboard');
+        const artifact = parseHtmlDashboardFile(
+          legacyDashboardPath,
+          'dashboard',
+        );
         summaries.set('dashboard', {
           slug: 'dashboard',
           title: artifact.document.title,
@@ -393,7 +403,10 @@ export function publishLatestDashboard(
   const legacyDashboardPath = getLegacyDashboardPath(groupFolder);
   if (!fs.existsSync(legacyDashboardPath)) return null;
 
-  const { document, html } = parseHtmlDashboardFile(legacyDashboardPath, 'dashboard');
+  const { document, html } = parseHtmlDashboardFile(
+    legacyDashboardPath,
+    'dashboard',
+  );
   const dashboardDir = getDashboardDir(groupFolder);
   fs.mkdirSync(dashboardDir, { recursive: true });
 

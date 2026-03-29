@@ -123,7 +123,9 @@ async function readFormData(req: IncomingMessage): Promise<FormData> {
   return request.formData();
 }
 
-function isIncomingMultipartFile(entry: unknown): entry is IncomingMultipartFile {
+function isIncomingMultipartFile(
+  entry: unknown,
+): entry is IncomingMultipartFile {
   return (
     typeof entry === 'object' &&
     entry !== null &&
@@ -156,10 +158,7 @@ function redirect(res: ServerResponse, location: string): void {
   res.end();
 }
 
-function hasRole(
-  session: BrowserSession,
-  required: WebWorkspaceRole,
-): boolean {
+function hasRole(session: BrowserSession, required: WebWorkspaceRole): boolean {
   const rank: Record<WebWorkspaceRole, number> = {
     Viewer: 1,
     Operator: 2,
@@ -253,9 +252,11 @@ async function buildForwardedMessageBody(
     const form = await readFormData(req);
     const text = String(form.get('text') || '').trim();
     const messageId = String(form.get('messageId') || '').trim();
-    const files = form.getAll('files').filter((entry) =>
-      isIncomingMultipartFile(entry),
-    ) as IncomingMultipartFile[];
+    const files = form
+      .getAll('files')
+      .filter((entry) =>
+        isIncomingMultipartFile(entry),
+      ) as IncomingMultipartFile[];
 
     if (!text && files.length === 0) {
       writeJson(res, 400, { error: 'Message text or files are required' });
@@ -316,13 +317,23 @@ function serveFrontend(res: ServerResponse, pathname: string): void {
     fs.existsSync(requested) &&
     fs.statSync(requested).isFile()
   ) {
-    writeText(res, 200, fs.readFileSync(requested, 'utf8'), getContentType(requested));
+    writeText(
+      res,
+      200,
+      fs.readFileSync(requested, 'utf8'),
+      getContentType(requested),
+    );
     return;
   }
 
   const indexPath = path.join(FRONTEND_DIST, 'index.html');
   if (fs.existsSync(indexPath)) {
-    writeText(res, 200, fs.readFileSync(indexPath, 'utf8'), 'text/html; charset=utf-8');
+    writeText(
+      res,
+      200,
+      fs.readFileSync(indexPath, 'utf8'),
+      'text/html; charset=utf-8',
+    );
     return;
   }
 
@@ -503,7 +514,11 @@ async function handleApiRoute(
       return true;
     }
 
-    if (req.method === 'GET' && segments[3] === 'dashboards' && segments.length === 4) {
+    if (
+      req.method === 'GET' &&
+      segments[3] === 'dashboards' &&
+      segments.length === 4
+    ) {
       writeJson(res, 200, {
         dashboards: await getWorkspaceDashboards(workspace.jid),
       });
@@ -565,7 +580,10 @@ async function handleApiRoute(
       segments[5] === 'content'
     ) {
       const attachmentId = decodeURIComponent(segments[4] || '');
-      const upstream = await getWorkspaceAttachmentContent(workspace.jid, attachmentId);
+      const upstream = await getWorkspaceAttachmentContent(
+        workspace.jid,
+        attachmentId,
+      );
       const buffer = Buffer.from(await upstream.arrayBuffer());
       writeBinary(
         res,
@@ -712,8 +730,7 @@ async function handleApiRoute(
         'X-Content-Type-Options':
           upstream.headers.get('x-content-type-options') || 'nosniff',
         'Cross-Origin-Resource-Policy':
-          upstream.headers.get('cross-origin-resource-policy') ||
-          'same-origin',
+          upstream.headers.get('cross-origin-resource-policy') || 'same-origin',
       },
     );
     return true;
@@ -838,7 +855,10 @@ async function requestHandler(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const url = new URL(
+    req.url || '/',
+    `http://${req.headers.host || 'localhost'}`,
+  );
 
   if (await handleAuthRoute(req, res, url)) return;
   if (await handleApiRoute(req, res, url)) return;

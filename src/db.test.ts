@@ -333,10 +333,11 @@ describe('web workspaces', () => {
       lastOpenedAt: '2024-01-03T00:00:00.000Z',
     });
 
-    expect(getOwnedWebWorkspaces('tenant-1', 'user-1').map((workspace) => workspace.jid)).toEqual([
-      'web:tenant-1:user-1:planning',
-      'web:tenant-1:user-1',
-    ]);
+    expect(
+      getOwnedWebWorkspaces('tenant-1', 'user-1').map(
+        (workspace) => workspace.jid,
+      ),
+    ).toEqual(['web:tenant-1:user-1:planning', 'web:tenant-1:user-1']);
     expect(getWebWorkspaceByIdentity('tenant-1', 'user-1')?.jid).toBe(
       'web:tenant-1:user-1',
     );
@@ -383,11 +384,12 @@ describe('message attachments', () => {
         ],
       }),
     ]);
-    expect(getMessagesSince('web:tenant:user', '2024-01-01T00:00:00.000Z', 'Andy')).toHaveLength(
-      1,
-    );
     expect(
-      getNewMessages(['web:tenant:user'], '2024-01-01T00:00:00.000Z', 'Andy').messages,
+      getMessagesSince('web:tenant:user', '2024-01-01T00:00:00.000Z', 'Andy'),
+    ).toHaveLength(1);
+    expect(
+      getNewMessages(['web:tenant:user'], '2024-01-01T00:00:00.000Z', 'Andy')
+        .messages,
     ).toHaveLength(1);
   });
 });

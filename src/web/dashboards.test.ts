@@ -156,8 +156,10 @@ describe('published dashboards', () => {
     expect(getPublishedDashboardHtml(folder, published!.slug)).toContain(
       '<h1>Fresh dashboard</h1>',
     );
-    expect(listPublishedDashboards(folder).some((entry) => entry.slug === published!.slug)).toBe(
-      true,
-    );
+    expect(
+      listPublishedDashboards(folder).some(
+        (entry) => entry.slug === published!.slug,
+      ),
+    ).toBe(true);
   });
 });
