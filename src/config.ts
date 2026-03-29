@@ -10,6 +10,24 @@ const envConfig = readEnvFile([
   'ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'TELEGRAM_BOT_POOL',
+  'WEB_HOST',
+  'WEB_PORT',
+  'WEB_ALLOWED_ORIGINS',
+  'WEB_INTERNAL_API_TOKEN',
+  'WEBAPP_HOST',
+  'WEBAPP_PORT',
+  'WEBAPP_AUTH_MODE',
+  'WEBAPP_SESSION_SECRET',
+  'WEBAPP_INTERNAL_BASE_URL',
+  'WEBAPP_PUBLIC_BASE_URL',
+  'WEBAPP_ENTRA_TENANT_ID',
+  'WEBAPP_ENTRA_CLIENT_ID',
+  'WEBAPP_ENTRA_CLIENT_SECRET',
+  'WEBAPP_DEV_USER_ID',
+  'WEBAPP_DEV_USER_NAME',
+  'WEBAPP_DEV_EMAIL',
+  'WEBAPP_DEV_ROLE',
+  'DISABLED_CHANNELS',
 ]);
 
 export const ASSISTANT_NAME =
@@ -79,4 +97,69 @@ export const TELEGRAM_BOT_POOL = (
 )
   .split(',')
   .map((t) => t.trim())
+  .filter(Boolean);
+
+export const WEB_HOST =
+  process.env.WEB_HOST || envConfig.WEB_HOST || '127.0.0.1';
+export const WEB_PORT = Math.max(
+  1,
+  parseInt(process.env.WEB_PORT || envConfig.WEB_PORT || '5000', 10) || 5000,
+);
+export const WEB_ALLOWED_ORIGINS = (
+  process.env.WEB_ALLOWED_ORIGINS ||
+  envConfig.WEB_ALLOWED_ORIGINS ||
+  ''
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+export const WEB_INTERNAL_API_TOKEN =
+  process.env.WEB_INTERNAL_API_TOKEN || envConfig.WEB_INTERNAL_API_TOKEN || '';
+
+export const WEBAPP_HOST =
+  process.env.WEBAPP_HOST || envConfig.WEBAPP_HOST || '127.0.0.1';
+export const WEBAPP_PORT = Math.max(
+  1,
+  parseInt(process.env.WEBAPP_PORT || envConfig.WEBAPP_PORT || '5100', 10) ||
+    5100,
+);
+export const WEBAPP_AUTH_MODE =
+  process.env.WEBAPP_AUTH_MODE || envConfig.WEBAPP_AUTH_MODE || 'dev';
+export const WEBAPP_SESSION_SECRET =
+  process.env.WEBAPP_SESSION_SECRET || envConfig.WEBAPP_SESSION_SECRET || '';
+export const WEBAPP_INTERNAL_BASE_URL =
+  process.env.WEBAPP_INTERNAL_BASE_URL ||
+  envConfig.WEBAPP_INTERNAL_BASE_URL ||
+  `http://${WEB_HOST}:${WEB_PORT}`;
+export const WEBAPP_PUBLIC_BASE_URL =
+  process.env.WEBAPP_PUBLIC_BASE_URL ||
+  envConfig.WEBAPP_PUBLIC_BASE_URL ||
+  `http://${WEBAPP_HOST}:${WEBAPP_PORT}`;
+export const WEBAPP_ENTRA_TENANT_ID =
+  process.env.WEBAPP_ENTRA_TENANT_ID || envConfig.WEBAPP_ENTRA_TENANT_ID || '';
+export const WEBAPP_ENTRA_CLIENT_ID =
+  process.env.WEBAPP_ENTRA_CLIENT_ID || envConfig.WEBAPP_ENTRA_CLIENT_ID || '';
+export const WEBAPP_ENTRA_CLIENT_SECRET =
+  process.env.WEBAPP_ENTRA_CLIENT_SECRET ||
+  envConfig.WEBAPP_ENTRA_CLIENT_SECRET ||
+  '';
+export const WEBAPP_DEV_USER_ID =
+  process.env.WEBAPP_DEV_USER_ID || envConfig.WEBAPP_DEV_USER_ID || 'dev-user';
+export const WEBAPP_DEV_USER_NAME =
+  process.env.WEBAPP_DEV_USER_NAME ||
+  envConfig.WEBAPP_DEV_USER_NAME ||
+  'AgentOS Developer';
+export const WEBAPP_DEV_EMAIL =
+  process.env.WEBAPP_DEV_EMAIL || envConfig.WEBAPP_DEV_EMAIL || '';
+export const WEBAPP_DEV_ROLE =
+  process.env.WEBAPP_DEV_ROLE || envConfig.WEBAPP_DEV_ROLE || 'Admin';
+
+export const DISABLED_CHANNELS = (
+  process.env.DISABLED_CHANNELS ||
+  envConfig.DISABLED_CHANNELS ||
+  ''
+)
+  .split(',')
+  .map((channel) => channel.trim())
   .filter(Boolean);

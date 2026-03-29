@@ -243,6 +243,30 @@ describe('GroupQueue', () => {
     expect(processed).toContain('group3@g.us');
   });
 
+  it('returns runtime snapshots for tracked groups', async () => {
+    let release: () => void;
+
+    queue.setProcessMessagesFn(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return true;
+    });
+
+    queue.enqueueMessageCheck('group1@g.us');
+    await vi.advanceTimersByTimeAsync(10);
+
+    const snapshot = queue.getSnapshot();
+    expect(snapshot.activeCount).toBe(1);
+    expect(snapshot.maxConcurrent).toBe(2);
+    expect(snapshot.groups).toHaveLength(1);
+    expect(snapshot.groups[0].groupJid).toBe('group1@g.us');
+    expect(snapshot.groups[0].active).toBe(true);
+
+    release!();
+    await vi.advanceTimersByTimeAsync(10);
+  });
+
   // --- Running task dedup (Issue #138) ---
 
   it('rejects duplicate enqueue of a currently-running task', async () => {

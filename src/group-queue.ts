@@ -27,6 +27,28 @@ interface GroupState {
   retryCount: number;
 }
 
+export interface GroupRuntimeSnapshot {
+  groupJid: string;
+  active: boolean;
+  idleWaiting: boolean;
+  isTaskContainer: boolean;
+  runningTaskId: string | null;
+  pendingMessages: boolean;
+  pendingTaskCount: number;
+  processActive: boolean;
+  containerName: string | null;
+  groupFolder: string | null;
+  retryCount: number;
+  waiting: boolean;
+}
+
+export interface QueueSnapshot {
+  activeCount: number;
+  maxConcurrent: number;
+  waitingGroups: string[];
+  groups: GroupRuntimeSnapshot[];
+}
+
 export class GroupQueue {
   private groups = new Map<string, GroupState>();
   private activeCount = 0;
@@ -139,6 +161,40 @@ export class GroupQueue {
     state.process = proc;
     state.containerName = containerName;
     if (groupFolder) state.groupFolder = groupFolder;
+  }
+
+  getGroupSnapshot(groupJid: string): GroupRuntimeSnapshot | null {
+    const state = this.groups.get(groupJid);
+    if (!state) return null;
+
+    return {
+      groupJid,
+      active: state.active,
+      idleWaiting: state.idleWaiting,
+      isTaskContainer: state.isTaskContainer,
+      runningTaskId: state.runningTaskId,
+      pendingMessages: state.pendingMessages,
+      pendingTaskCount: state.pendingTasks.length,
+      processActive: state.process !== null && !state.process.killed,
+      containerName: state.containerName,
+      groupFolder: state.groupFolder,
+      retryCount: state.retryCount,
+      waiting: this.waitingGroups.includes(groupJid),
+    };
+  }
+
+  getSnapshot(): QueueSnapshot {
+    const groups = [...this.groups.keys()]
+      .sort()
+      .map((groupJid) => this.getGroupSnapshot(groupJid))
+      .filter((group): group is GroupRuntimeSnapshot => group !== null);
+
+    return {
+      activeCount: this.activeCount,
+      maxConcurrent: MAX_CONCURRENT_CONTAINERS,
+      waitingGroups: [...this.waitingGroups],
+      groups,
+    };
   }
 
   /**

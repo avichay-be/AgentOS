@@ -1,5 +1,6 @@
 import { Channel, NewMessage } from './types.js';
 import { formatLocalTime } from './timezone.js';
+import { buildAttachmentPromptBlock } from './web/uploads.js';
 
 export function escapeXml(s: string): string {
   if (!s) return '';
@@ -16,7 +17,10 @@ export function formatMessages(
 ): string {
   const lines = messages.map((m) => {
     const displayTime = formatLocalTime(m.timestamp, timezone);
-    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}">${escapeXml(m.content)}</message>`;
+    const attachmentBlock = m.attachments?.length
+      ? `${buildAttachmentPromptBlock(m.attachments)}\n\n`
+      : '';
+    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}">${escapeXml(`${attachmentBlock}${m.content}`)}</message>`;
   });
 
   const header = `<context timezone="${escapeXml(timezone)}" />\n`;

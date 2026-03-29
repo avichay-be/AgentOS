@@ -51,6 +51,7 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  attachments?: MessageAttachment[];
 }
 
 export interface ScheduledTask {
@@ -76,6 +77,48 @@ export interface TaskRunLog {
   result: string | null;
   error: string | null;
 }
+
+export type WebWorkspaceRole = 'Viewer' | 'Operator' | 'Admin';
+
+export interface MessageAttachment {
+  id: string;
+  message_id: string;
+  chat_jid: string;
+  original_name: string;
+  stored_name: string;
+  content_type: string;
+  size_bytes: number;
+  relative_path: string;
+  created_at: string;
+}
+
+export interface WebWorkspaceIdentity {
+  tenantId: string;
+  userId: string;
+  chatId: string;
+  jid: string;
+  folder: string;
+  displayName: string;
+  email?: string;
+  role: WebWorkspaceRole;
+  title: string;
+  createdAt: string;
+  lastLoginAt: string;
+  lastOpenedAt: string;
+}
+
+export type WebChatStreamEvent =
+  | {
+      type: 'message';
+      timestamp: string;
+      direction: 'inbound' | 'outbound';
+      message: NewMessage;
+    }
+  | {
+      type: 'typing';
+      timestamp: string;
+      isTyping: boolean;
+    };
 
 // --- Channel abstraction ---
 

@@ -6,13 +6,144 @@ import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import {
+  MessageAttachment,
   NewMessage,
   RegisteredGroup,
   ScheduledTask,
   TaskRunLog,
+  WebWorkspaceIdentity,
 } from './types.js';
 
 let db: Database.Database;
+
+function getTableColumns(
+  database: Database.Database,
+  tableName: string,
+): string[] {
+  return (
+    database
+      .prepare(`PRAGMA table_info(${tableName})`)
+      .all() as Array<{ name: string }>
+  ).map((column) => column.name);
+}
+
+function ensureWebWorkspaceSchema(database: Database.Database): void {
+  const columns = getTableColumns(database, 'web_workspaces');
+
+  if (columns.length === 0) {
+    database.exec(`
+      CREATE TABLE web_workspaces (
+        jid TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        folder TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        email TEXT,
+        role TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        last_opened_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX idx_web_workspaces_owner_chat
+        ON web_workspaces(tenant_id, user_id, chat_id);
+      CREATE INDEX idx_web_workspaces_role ON web_workspaces(role);
+      CREATE INDEX idx_web_workspaces_owner_opened
+        ON web_workspaces(tenant_id, user_id, last_opened_at DESC);
+    `);
+    return;
+  }
+
+  if (!columns.includes('chat_id')) {
+    database.exec(`
+      ALTER TABLE web_workspaces RENAME TO web_workspaces_legacy;
+
+      CREATE TABLE web_workspaces (
+        jid TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        folder TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        email TEXT,
+        role TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        last_opened_at TEXT NOT NULL
+      );
+
+      INSERT INTO web_workspaces (
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      )
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        'default',
+        folder,
+        display_name,
+        email,
+        role,
+        'Default chat',
+        created_at,
+        last_login_at,
+        last_login_at
+      FROM web_workspaces_legacy;
+
+      DROP TABLE web_workspaces_legacy;
+
+      CREATE UNIQUE INDEX idx_web_workspaces_owner_chat
+        ON web_workspaces(tenant_id, user_id, chat_id);
+      CREATE INDEX idx_web_workspaces_role ON web_workspaces(role);
+      CREATE INDEX idx_web_workspaces_owner_opened
+        ON web_workspaces(tenant_id, user_id, last_opened_at DESC);
+    `);
+    return;
+  }
+
+  try {
+    database.exec(`ALTER TABLE web_workspaces ADD COLUMN title TEXT`);
+  } catch {
+    /* column already exists */
+  }
+  try {
+    database.exec(`ALTER TABLE web_workspaces ADD COLUMN last_opened_at TEXT`);
+  } catch {
+    /* column already exists */
+  }
+
+  database.exec(`
+    UPDATE web_workspaces
+    SET
+      title = COALESCE(NULLIF(title, ''), 'Default chat'),
+      last_opened_at = COALESCE(last_opened_at, last_login_at, created_at)
+  `);
+  database.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_web_workspaces_owner_chat
+      ON web_workspaces(tenant_id, user_id, chat_id);
+  `);
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_web_workspaces_role
+      ON web_workspaces(role);
+  `);
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_web_workspaces_owner_opened
+      ON web_workspaces(tenant_id, user_id, last_opened_at DESC);
+  `);
+}
 
 function createSchema(database: Database.Database): void {
   database.exec(`
@@ -82,7 +213,25 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS message_attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      chat_jid TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      content_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      relative_path TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (chat_jid) REFERENCES chats(jid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_attachments_message
+      ON message_attachments(chat_jid, message_id);
+    CREATE INDEX IF NOT EXISTS idx_message_attachments_created_at
+      ON message_attachments(created_at);
   `);
+
+  ensureWebWorkspaceSchema(database);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
   try {
@@ -273,6 +422,9 @@ export function storeMessage(msg: NewMessage): void {
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
   );
+  if (msg.attachments) {
+    replaceMessageAttachments(msg.chat_jid, msg.id, msg.attachments);
+  }
 }
 
 /**
@@ -287,6 +439,7 @@ export function storeMessageDirect(msg: {
   timestamp: string;
   is_from_me: boolean;
   is_bot_message?: boolean;
+  attachments?: MessageAttachment[];
 }): void {
   db.prepare(
     `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -300,6 +453,91 @@ export function storeMessageDirect(msg: {
     msg.is_from_me ? 1 : 0,
     msg.is_bot_message ? 1 : 0,
   );
+  if (msg.attachments) {
+    replaceMessageAttachments(msg.chat_jid, msg.id, msg.attachments);
+  }
+}
+
+function replaceMessageAttachments(
+  chatJid: string,
+  messageId: string,
+  attachments: MessageAttachment[],
+): void {
+  db.prepare(
+    `DELETE FROM message_attachments WHERE chat_jid = ? AND message_id = ?`,
+  ).run(chatJid, messageId);
+
+  if (attachments.length === 0) return;
+
+  const insert = db.prepare(`
+    INSERT INTO message_attachments (
+      id,
+      message_id,
+      chat_jid,
+      original_name,
+      stored_name,
+      content_type,
+      size_bytes,
+      relative_path,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const attachment of attachments) {
+    insert.run(
+      attachment.id,
+      attachment.message_id,
+      attachment.chat_jid,
+      attachment.original_name,
+      attachment.stored_name,
+      attachment.content_type,
+      attachment.size_bytes,
+      attachment.relative_path,
+      attachment.created_at,
+    );
+  }
+}
+
+function hydrateAttachments(rows: NewMessage[]): NewMessage[] {
+  if (rows.length === 0) return rows;
+
+  const chatJids = [...new Set(rows.map((row) => row.chat_jid))];
+  const messageIds = [...new Set(rows.map((row) => row.id))];
+  const chatPlaceholders = chatJids.map(() => '?').join(',');
+  const messagePlaceholders = messageIds.map(() => '?').join(',');
+
+  const attachments = db
+    .prepare(
+      `
+      SELECT
+        id,
+        message_id,
+        chat_jid,
+        original_name,
+        stored_name,
+        content_type,
+        size_bytes,
+        relative_path,
+        created_at
+      FROM message_attachments
+      WHERE chat_jid IN (${chatPlaceholders}) AND message_id IN (${messagePlaceholders})
+      ORDER BY created_at ASC, original_name ASC
+    `,
+    )
+    .all(...chatJids, ...messageIds) as MessageAttachment[];
+
+  const byMessage = new Map<string, MessageAttachment[]>();
+  for (const attachment of attachments) {
+    const key = `${attachment.chat_jid}:${attachment.message_id}`;
+    const current = byMessage.get(key) || [];
+    current.push(attachment);
+    byMessage.set(key, current);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    attachments: byMessage.get(`${row.chat_jid}:${row.id}`) || undefined,
+  }));
 }
 
 export function getNewMessages(
@@ -320,7 +558,15 @@ export function getNewMessages(
       FROM messages
       WHERE timestamp > ? AND chat_jid IN (${placeholders})
         AND is_bot_message = 0 AND content NOT LIKE ?
-        AND content != '' AND content IS NOT NULL
+        AND (
+          (content != '' AND content IS NOT NULL) OR
+          EXISTS (
+            SELECT 1
+            FROM message_attachments
+            WHERE message_attachments.chat_jid = messages.chat_jid
+              AND message_attachments.message_id = messages.id
+          )
+        )
       ORDER BY timestamp DESC
       LIMIT ?
     ) ORDER BY timestamp
@@ -335,7 +581,7 @@ export function getNewMessages(
     if (row.timestamp > newTimestamp) newTimestamp = row.timestamp;
   }
 
-  return { messages: rows, newTimestamp };
+  return { messages: hydrateAttachments(rows), newTimestamp };
 }
 
 export function getMessagesSince(
@@ -353,14 +599,66 @@ export function getMessagesSince(
       FROM messages
       WHERE chat_jid = ? AND timestamp > ?
         AND is_bot_message = 0 AND content NOT LIKE ?
-        AND content != '' AND content IS NOT NULL
+        AND (
+          (content != '' AND content IS NOT NULL) OR
+          EXISTS (
+            SELECT 1
+            FROM message_attachments
+            WHERE message_attachments.chat_jid = messages.chat_jid
+              AND message_attachments.message_id = messages.id
+          )
+        )
       ORDER BY timestamp DESC
       LIMIT ?
     ) ORDER BY timestamp
   `;
-  return db
-    .prepare(sql)
-    .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
+  return hydrateAttachments(
+    db
+      .prepare(sql)
+      .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[],
+  );
+}
+
+export function getMessagesForChat(
+  chatJid: string,
+  limit: number = 100,
+  before?: string,
+): NewMessage[] {
+  const safeLimit = Math.max(1, Math.min(limit, 500));
+
+  if (before) {
+    return hydrateAttachments(
+      db
+        .prepare(
+          `
+          SELECT * FROM (
+            SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+            FROM messages
+            WHERE chat_jid = ? AND timestamp < ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+          ) ORDER BY timestamp
+        `,
+        )
+        .all(chatJid, before, safeLimit) as NewMessage[],
+    );
+  }
+
+  return hydrateAttachments(
+    db
+      .prepare(
+        `
+        SELECT * FROM (
+          SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+          FROM messages
+          WHERE chat_jid = ?
+          ORDER BY timestamp DESC
+          LIMIT ?
+        ) ORDER BY timestamp
+      `,
+      )
+      .all(chatJid, safeLimit) as NewMessage[],
+  );
 }
 
 export function createTask(
@@ -494,6 +792,21 @@ export function logTaskRun(log: TaskRunLog): void {
     log.result,
     log.error,
   );
+}
+
+export function getTaskRunLogs(taskId: string, limit: number = 50): TaskRunLog[] {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+  return db
+    .prepare(
+      `
+      SELECT task_id, run_at, duration_ms, status, result, error
+      FROM task_run_logs
+      WHERE task_id = ?
+      ORDER BY run_at DESC
+      LIMIT ?
+    `,
+    )
+    .all(taskId, safeLimit) as TaskRunLog[];
 }
 
 // --- Router state accessors ---
@@ -632,6 +945,298 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     };
   }
   return result;
+}
+
+// --- Web workspace accessors ---
+
+interface WebWorkspaceRow {
+  jid: string;
+  tenant_id: string;
+  user_id: string;
+  chat_id: string;
+  folder: string;
+  display_name: string;
+  email: string | null;
+  role: string;
+  title: string;
+  created_at: string;
+  last_login_at: string;
+  last_opened_at: string;
+}
+
+function mapWebWorkspaceRow(row: WebWorkspaceRow): WebWorkspaceIdentity {
+  return {
+    jid: row.jid,
+    tenantId: row.tenant_id,
+    userId: row.user_id,
+    chatId: row.chat_id,
+    folder: row.folder,
+    displayName: row.display_name,
+    email: row.email || undefined,
+    role:
+      row.role === 'Admin' || row.role === 'Operator' || row.role === 'Viewer'
+        ? row.role
+        : 'Viewer',
+    title: row.title,
+    createdAt: row.created_at,
+    lastLoginAt: row.last_login_at,
+    lastOpenedAt: row.last_opened_at,
+  };
+}
+
+export function upsertWebWorkspace(workspace: WebWorkspaceIdentity): void {
+  if (!isValidGroupFolder(workspace.folder)) {
+    throw new Error(`Invalid group folder "${workspace.folder}" for ${workspace.jid}`);
+  }
+
+  db.prepare(
+    `
+    INSERT INTO web_workspaces (
+      jid,
+      tenant_id,
+      user_id,
+      chat_id,
+      folder,
+      display_name,
+      email,
+      role,
+      title,
+      created_at,
+      last_login_at,
+      last_opened_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(jid) DO UPDATE SET
+      folder = excluded.folder,
+      display_name = excluded.display_name,
+      email = excluded.email,
+      role = excluded.role,
+      title = excluded.title,
+      last_login_at = excluded.last_login_at,
+      last_opened_at = excluded.last_opened_at
+  `,
+  ).run(
+    workspace.jid,
+    workspace.tenantId,
+    workspace.userId,
+    workspace.chatId,
+    workspace.folder,
+    workspace.displayName,
+    workspace.email || null,
+    workspace.role,
+    workspace.title,
+    workspace.createdAt,
+    workspace.lastLoginAt,
+    workspace.lastOpenedAt,
+  );
+}
+
+export function getWebWorkspaceByIdentity(
+  tenantId: string,
+  userId: string,
+): WebWorkspaceIdentity | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      FROM web_workspaces
+      WHERE tenant_id = ? AND user_id = ?
+      ORDER BY CASE WHEN chat_id = 'default' THEN 0 ELSE 1 END,
+               last_opened_at DESC,
+               created_at ASC
+      LIMIT 1
+    `,
+    )
+    .get(tenantId, userId) as WebWorkspaceRow | undefined;
+
+  return row ? mapWebWorkspaceRow(row) : undefined;
+}
+
+export function getWebWorkspaceByJid(
+  jid: string,
+): WebWorkspaceIdentity | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      FROM web_workspaces
+      WHERE jid = ?
+    `,
+    )
+    .get(jid) as WebWorkspaceRow | undefined;
+
+  return row ? mapWebWorkspaceRow(row) : undefined;
+}
+
+export function getWebWorkspaceByOwnerAndChatId(
+  tenantId: string,
+  userId: string,
+  chatId: string,
+): WebWorkspaceIdentity | undefined {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      FROM web_workspaces
+      WHERE tenant_id = ? AND user_id = ? AND chat_id = ?
+      LIMIT 1
+    `,
+    )
+    .get(tenantId, userId, chatId) as WebWorkspaceRow | undefined;
+
+  return row ? mapWebWorkspaceRow(row) : undefined;
+}
+
+export function getOwnedWebWorkspaces(
+  tenantId: string,
+  userId: string,
+): WebWorkspaceIdentity[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      FROM web_workspaces
+      WHERE tenant_id = ? AND user_id = ?
+      ORDER BY last_opened_at DESC, created_at DESC
+    `,
+    )
+    .all(tenantId, userId) as WebWorkspaceRow[];
+
+  return rows.map(mapWebWorkspaceRow);
+}
+
+export function getAllWebWorkspaces(): WebWorkspaceIdentity[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        jid,
+        tenant_id,
+        user_id,
+        chat_id,
+        folder,
+        display_name,
+        email,
+        role,
+        title,
+        created_at,
+        last_login_at,
+        last_opened_at
+      FROM web_workspaces
+      ORDER BY last_opened_at DESC, created_at DESC
+    `,
+    )
+    .all() as WebWorkspaceRow[];
+
+  return rows.map(mapWebWorkspaceRow);
+}
+
+export function updateWebWorkspaceOwnerProfile(
+  tenantId: string,
+  userId: string,
+  profile: {
+    displayName: string;
+    email?: string;
+    role: WebWorkspaceIdentity['role'];
+    lastLoginAt: string;
+  },
+): void {
+  db.prepare(
+    `
+    UPDATE web_workspaces
+    SET
+      display_name = ?,
+      email = ?,
+      role = ?,
+      last_login_at = ?
+    WHERE tenant_id = ? AND user_id = ?
+  `,
+  ).run(
+    profile.displayName,
+    profile.email || null,
+    profile.role,
+    profile.lastLoginAt,
+    tenantId,
+    userId,
+  );
+}
+
+export function touchWebWorkspaceLastOpenedAt(jid: string, at?: string): void {
+  db.prepare(
+    `UPDATE web_workspaces SET last_opened_at = ? WHERE jid = ?`,
+  ).run(at || new Date().toISOString(), jid);
+}
+
+export function getMessageAttachment(
+  chatJid: string,
+  attachmentId: string,
+): MessageAttachment | undefined {
+  return db
+    .prepare(
+      `
+      SELECT
+        id,
+        message_id,
+        chat_jid,
+        original_name,
+        stored_name,
+        content_type,
+        size_bytes,
+        relative_path,
+        created_at
+      FROM message_attachments
+      WHERE chat_jid = ? AND id = ?
+      LIMIT 1
+    `,
+    )
+    .get(chatJid, attachmentId) as MessageAttachment | undefined;
 }
 
 // --- JSON migration ---

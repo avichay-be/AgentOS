@@ -6,12 +6,20 @@ import {
   deleteTask,
   getAllChats,
   getAllRegisteredGroups,
+  getMessageAttachment,
+  getMessagesForChat,
   getMessagesSince,
   getNewMessages,
+  getOwnedWebWorkspaces,
   getTaskById,
+  getTaskRunLogs,
+  getWebWorkspaceByIdentity,
+  getWebWorkspaceByJid,
+  logTaskRun,
   setRegisteredGroup,
   storeChatMetadata,
   storeMessage,
+  upsertWebWorkspace,
   updateTask,
 } from './db.js';
 
@@ -227,6 +235,163 @@ describe('getMessagesSince', () => {
   });
 });
 
+describe('web workspaces', () => {
+  it('creates and fetches a workspace by identity and jid', () => {
+    upsertWebWorkspace({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      chatId: 'default',
+      jid: 'web:tenant-1:user-1',
+      folder: 'web_abc123',
+      displayName: 'Avi',
+      email: 'avi@example.com',
+      role: 'Operator',
+      title: 'Default chat',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      lastLoginAt: '2024-01-02T00:00:00.000Z',
+      lastOpenedAt: '2024-01-02T00:00:00.000Z',
+    });
+
+    expect(getWebWorkspaceByIdentity('tenant-1', 'user-1')).toMatchObject({
+      jid: 'web:tenant-1:user-1',
+      chatId: 'default',
+      title: 'Default chat',
+      folder: 'web_abc123',
+      role: 'Operator',
+    });
+
+    expect(getWebWorkspaceByJid('web:tenant-1:user-1')).toMatchObject({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      displayName: 'Avi',
+    });
+  });
+
+  it('updates display metadata and last login on upsert', () => {
+    upsertWebWorkspace({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      chatId: 'default',
+      jid: 'web:tenant-1:user-1',
+      folder: 'web_abc123',
+      displayName: 'Avi',
+      role: 'Viewer',
+      title: 'Default chat',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      lastLoginAt: '2024-01-01T00:00:00.000Z',
+      lastOpenedAt: '2024-01-01T00:00:00.000Z',
+    });
+
+    upsertWebWorkspace({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      chatId: 'default',
+      jid: 'web:tenant-1:user-1',
+      folder: 'web_abc123',
+      displayName: 'Avichay',
+      email: 'avi@example.com',
+      role: 'Admin',
+      title: 'Default chat',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      lastLoginAt: '2024-01-03T00:00:00.000Z',
+      lastOpenedAt: '2024-01-03T00:00:00.000Z',
+    });
+
+    expect(getWebWorkspaceByIdentity('tenant-1', 'user-1')).toMatchObject({
+      displayName: 'Avichay',
+      email: 'avi@example.com',
+      role: 'Admin',
+      lastLoginAt: '2024-01-03T00:00:00.000Z',
+    });
+  });
+
+  it('lists multiple chats for the same owner and prefers the default chat for identity lookup', () => {
+    upsertWebWorkspace({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      chatId: 'default',
+      jid: 'web:tenant-1:user-1',
+      folder: 'web_default',
+      displayName: 'Avi',
+      role: 'Viewer',
+      title: 'Default chat',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      lastLoginAt: '2024-01-02T00:00:00.000Z',
+      lastOpenedAt: '2024-01-02T00:00:00.000Z',
+    });
+    upsertWebWorkspace({
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      chatId: 'planning',
+      jid: 'web:tenant-1:user-1:planning',
+      folder: 'web_planning',
+      displayName: 'Avi',
+      role: 'Viewer',
+      title: 'Planning',
+      createdAt: '2024-01-02T00:00:00.000Z',
+      lastLoginAt: '2024-01-02T00:00:00.000Z',
+      lastOpenedAt: '2024-01-03T00:00:00.000Z',
+    });
+
+    expect(getOwnedWebWorkspaces('tenant-1', 'user-1').map((workspace) => workspace.jid)).toEqual([
+      'web:tenant-1:user-1:planning',
+      'web:tenant-1:user-1',
+    ]);
+    expect(getWebWorkspaceByIdentity('tenant-1', 'user-1')?.jid).toBe(
+      'web:tenant-1:user-1',
+    );
+  });
+});
+
+describe('message attachments', () => {
+  it('hydrates attachments and includes attachment-only messages in chat queries', () => {
+    storeChatMetadata('web:tenant:user', '2024-01-01T00:00:00.000Z');
+
+    storeMessage({
+      id: 'attachment-msg',
+      chat_jid: 'web:tenant:user',
+      sender: 'user-1',
+      sender_name: 'Avi',
+      content: '',
+      timestamp: '2024-01-01T00:00:02.000Z',
+      attachments: [
+        {
+          id: 'att-1',
+          message_id: 'attachment-msg',
+          chat_jid: 'web:tenant:user',
+          original_name: 'report.pdf',
+          stored_name: 'att-1-report.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 2048,
+          relative_path: 'uploads/att-1-report.pdf',
+          created_at: '2024-01-01T00:00:02.000Z',
+        },
+      ],
+    });
+
+    expect(getMessageAttachment('web:tenant:user', 'att-1')).toMatchObject({
+      original_name: 'report.pdf',
+    });
+    expect(getMessagesForChat('web:tenant:user', 10)).toEqual([
+      expect.objectContaining({
+        id: 'attachment-msg',
+        attachments: [
+          expect.objectContaining({
+            id: 'att-1',
+            original_name: 'report.pdf',
+          }),
+        ],
+      }),
+    ]);
+    expect(getMessagesSince('web:tenant:user', '2024-01-01T00:00:00.000Z', 'Andy')).toHaveLength(
+      1,
+    );
+    expect(
+      getNewMessages(['web:tenant:user'], '2024-01-01T00:00:00.000Z', 'Andy').messages,
+    ).toHaveLength(1);
+  });
+});
+
 // --- getNewMessages ---
 
 describe('getNewMessages', () => {
@@ -389,6 +554,43 @@ describe('task CRUD', () => {
     deleteTask('task-3');
     expect(getTaskById('task-3')).toBeUndefined();
   });
+
+  it('returns task run logs newest first', () => {
+    createTask({
+      id: 'task-4',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'run log test',
+      schedule_type: 'once',
+      schedule_value: '2024-06-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: null,
+      status: 'active',
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+
+    logTaskRun({
+      task_id: 'task-4',
+      run_at: '2024-01-01T00:00:01.000Z',
+      duration_ms: 1200,
+      status: 'success',
+      result: 'ok',
+      error: null,
+    });
+    logTaskRun({
+      task_id: 'task-4',
+      run_at: '2024-01-01T00:00:02.000Z',
+      duration_ms: 1400,
+      status: 'error',
+      result: null,
+      error: 'boom',
+    });
+
+    const logs = getTaskRunLogs('task-4', 10);
+    expect(logs).toHaveLength(2);
+    expect(logs[0].run_at).toBe('2024-01-01T00:00:02.000Z');
+    expect(logs[1].run_at).toBe('2024-01-01T00:00:01.000Z');
+  });
 });
 
 // --- LIMIT behavior ---
@@ -446,6 +648,41 @@ describe('message query LIMIT', () => {
       50,
     );
     expect(messages).toHaveLength(10);
+  });
+});
+
+describe('getMessagesForChat', () => {
+  beforeEach(() => {
+    storeChatMetadata('group@g.us', '2024-01-01T00:00:00.000Z');
+
+    for (let i = 1; i <= 4; i++) {
+      store({
+        id: `chat-${i}`,
+        chat_jid: 'group@g.us',
+        sender: 'user@s.whatsapp.net',
+        sender_name: 'User',
+        content: `message ${i}`,
+        timestamp: `2024-01-01T00:00:0${i}.000Z`,
+      });
+    }
+  });
+
+  it('returns recent messages in chronological order', () => {
+    const messages = getMessagesForChat('group@g.us', 2);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toBe('message 3');
+    expect(messages[1].content).toBe('message 4');
+  });
+
+  it('supports pagination with before', () => {
+    const messages = getMessagesForChat(
+      'group@g.us',
+      2,
+      '2024-01-01T00:00:04.000Z',
+    );
+    expect(messages).toHaveLength(2);
+    expect(messages[0].content).toBe('message 2');
+    expect(messages[1].content).toBe('message 3');
   });
 });
 
